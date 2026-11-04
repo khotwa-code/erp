@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دفتر المحل 📒 | نظام صغير لإدارة محلّك</title>
+<style>
+  * { box-sizing: border-box }
+  body { margin: 0; background: #F8F5F0; color: #1B2845;
+    font-family: system-ui, sans-serif; padding-bottom: 84px }
+  header { background: #1B2845; color: white; padding: 14px 16px;
+    display: flex; justify-content: space-between; align-items: center }
+  header b { font-size: 19px } header span { color: #C9A961; font-size: 14px }
+  main { max-width: 640px; margin: auto; padding: 14px }
+  h2 { font-size: 20px; margin: 6px 0 12px }
+  .card { background: white; border-radius: 16px; padding: 14px;
+    box-shadow: 0 4px 14px #1b28451a; margin-bottom: 12px }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+  .stat { background: white; border-radius: 14px; padding: 12px;
+    box-shadow: 0 4px 14px #1b28451a }
+  .stat small { color: #5a6580 } .stat b { display: block; font-size: 22px; margin-top: 4px }
+  label { display: block; font-weight: 600; margin: 8px 0 4px; font-size: 14px }
+  input, select { width: 100%; font-size: 16px; padding: 10px; border-radius: 10px;
+    border: 1.5px solid #d9d3c7; font-family: inherit; background: white }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+  button { font-family: inherit; font-size: 15px; font-weight: 700; border: 0;
+    border-radius: 10px; padding: 10px 14px; background: #1B2845; color: white; cursor: pointer }
+  button.gold { background: #C9A961; color: #1B2845 }
+  button.soft { background: #f1ece2; color: #1B2845 }
+  button.red { background: #fde8e6; color: #b03a2e }
+  button.wide { width: 100%; margin-top: 10px }
+  .row { display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; padding: 10px 0; border-bottom: 1px solid #eee7da }
+  .row:last-child { border-bottom: 0 }
+  .row div { min-width: 0; overflow-wrap: anywhere }
+  .row small { color: #5a6580 }
+  .acts { display: flex; gap: 6px; flex: none }
+  .acts button { padding: 8px 10px; font-size: 14px }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 20px;
+    background: #f1ece2; margin-inline-start: 4px }
+  .low { background: #fde8e6; color: #b03a2e }
+  .paid { background: #e3f6e9; color: #1e7a45 }
+  .cancel { background: #eee; color: #777; text-decoration: line-through }
+  .err { color: #b03a2e; font-weight: 600; margin-top: 8px; min-height: 1em }
+  .empty { color: #8a8f9c; text-align: center; padding: 18px 0 }
+  nav { position: fixed; bottom: 0; left: 0; right: 0; background: white;
+    display: flex; justify-content: space-around; padding: 8px 4px 12px;
+    box-shadow: 0 -4px 14px #1b28451a }
+  nav button { background: none; color: #5a6580; font-size: 12px; padding: 4px 6px }
+  nav button i { display: block; font-style: normal; font-size: 22px }
+  nav button.on { color: #1B2845 }
+  .inv { background: white; padding: 22px; border-radius: 12px }
+  .inv table { width: 100%; border-collapse: collapse; margin: 14px 0 }
+  .inv td, .inv th { border-bottom: 1px solid #ddd; padding: 8px 4px; text-align: right }
+  .inv .tot { font-size: 20px; font-weight: 800; text-align: left }
+  @media print {
+    header, nav, .noprint { display: none !important }
+    body { background: white; padding: 0 } main { max-width: none; padding: 0 }
+    .inv { box-shadow: none }
+  }
+</style>
+</head>
+<body>
+<header><b>📒 دفتر المحل</b><span id="shopName"></span></header>
+<main id="app"></main>
+<nav>
+  <button data-tab="home"><i>📊</i>الرئيسية</button>
+  <button data-tab="orders"><i>🧾</i>الطلبات</button>
+  <button data-tab="products"><i>📦</i>المنتجات</button>
+  <button data-tab="customers"><i>👥</i>الزبائن</button>
+  <button data-tab="settings"><i>⚙️</i>الإعدادات</button>
+</nav>
+<script>
+// ---------- البيانات: تُحفظ داخل هذا المتصفح فقط ----------
+const KEY = "khotwa-shop-v1"
+const blank = () => ({ settings: { name: "محلّي", phone: "", address: "", cur: "درهم" },
+  products: [], customers: [], orders: [], seq: { p: 1, c: 1, o: 1 } })
+let db
+try { db = JSON.parse(localStorage.getItem(KEY)) || blank() } catch { db = blank() }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)) } catch {} }
+
+const app = document.getElementById("app")
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+const money = n => (Math.round(n * 100) / 100).toLocaleString("en") + " " + db.settings.cur
+const num = v => parseFloat(String(v).replace(",", "."))
+const byId = (list, id) => list.find(x => x.id == id)
+const orderTotal = o => o.lines.reduce((s, l) => s + l.price * l.qty, 0)
+const today = () => new Date().toLocaleDateString("en-CA")
+const pad = n => String(n).padStart(4, "0")
+let tab = "home"
+
+function go(t, arg) {
+  tab = t
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab == t))
+  document.getElementById("shopName").textContent = db.settings.name
+  ;({ home, orders, products, customers, settings, newOrder, invoice })[t](arg)
+  scrollTo(0, 0)
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.tab))
+
+// ---------- الرئيسية ----------
+function home() {
+  const live = db.orders.filter(o => o.status != "ملغى")
+  const sumOf = list => list.reduce((s, o) => s + orderTotal(o), 0)
+  const t = today(), m = t.slice(0, 7)
+  const low = db.products.filter(p => p.stock <= p.min)
+  const sold = {}
+  live.forEach(o => o.lines.forEach(l => sold[l.name] = (sold[l.name] || 0) + l.qty))
+  const top = Object.entries(sold).sort((a, b) => b[1] - a[1]).slice(0, 3)
+  app.innerHTML = `<h2>📊 نظرة اليوم</h2>
+    <div class="stats">
+      <div class="stat"><small>مبيعات اليوم</small><b>${money(sumOf(live.filter(o => o.date == t)))}</b></div>
+      <div class="stat"><small>مبيعات الشهر</small><b>${money(sumOf(live.filter(o => o.date.startsWith(m))))}</b></div>
+      <div class="stat"><small>طلبات لم تُدفع</small><b>${live.filter(o => o.status == "جديد").length}</b></div>
+      <div class="stat"><small>منتجات تنفد</small><b>${low.length}</b></div>
+    </div>
+    <div class="card" style="margin-top:12px"><b>⚠️ مخزون منخفض</b>
+      ${low.length ? low.map(p => `<div class="row"><div>${esc(p.name)}</div>
+        <span class="tag low">باقي ${p.stock}</span></div>`).join("") : `<div class="empty">كل المخزون بخير 👍</div>`}
+    </div>
+    <div class="card"><b>🏆 الأكثر مبيعاً</b>
+      ${top.length ? top.map(([n, q]) => `<div class="row"><div>${esc(n)}</div><b>${q}</b></div>`).join("")
+        : `<div class="empty">لا مبيعات بعد</div>`}
+    </div>
+    <button class="gold wide" onclick="go('newOrder')">＋ طلب جديد</button>`
+}
+
+// ---------- المنتجات والمخزون ----------
+function products(editId) {
+  const p = byId(db.products, editId) || { name: "", price: "", stock: "", min: 5 }
+  app.innerHTML = `<h2>📦 المنتجات والمخزون</h2>
+    <div class="card"><b>${editId ? "✏️ تعديل منتج" : "＋ منتج جديد"}</b>
+      <label>اسم المنتج</label><input id="pn" value="${esc(p.name)}">
+      <div class="grid2">
+        <div><label>السعر</label><input id="pp" inputmode="decimal" value="${esc(p.price)}"></div>
+        <div><label>الكمية في المخزون</label><input id="ps" inputmode="numeric" value="${esc(p.stock)}"></div>
+      </div>
+      <label>نبّهني حين يصل المخزون إلى</label><input id="pm" inputmode="numeric" value="${esc(p.min)}">
+      <div class="err" id="err"></div>
+      <button class="wide" id="psave">${editId ? "حفظ التعديل" : "أضف المنتج"}</button>
+    </div>
+    <div class="card">${db.products.length ? db.products.map(x => `
+      <div class="row"><div><b>${esc(x.name)}</b><br><small>${money(x.price)}</small>
+        <span class="tag ${x.stock <= x.min ? "low" : ""}">المخزون: ${x.stock}</span></div>
+        <div class="acts"><button class="soft" onclick="go('products',${x.id})">✏️</button>
+        <button class="red" onclick="delProduct(${x.id})">🗑</button></div></div>`).join("")
+      : `<div class="empty">أضف أول منتج لك 👆</div>`}</div>`
+  document.getElementById("psave").onclick = () => {
+    const name = pn.value.trim(), price = num(pp.value), stock = parseInt(ps.value), min = parseInt(pm.value)
+    if (!name) return err.textContent = "اكتب اسم المنتج"
+    if (!(price >= 0)) return err.textContent = "اكتب سعراً صحيحاً"
+    if (!(stock >= 0)) return err.textContent = "اكتب الكمية (0 أو أكثر)"
+    const data = { name, price, stock, min: min >= 0 ? min : 0 }
+    if (editId) Object.assign(p, data); else db.products.push({ id: db.seq.p++, ...data })
+    save(); go("products")
+  }
+}
+function delProduct(id) {
+  if (!confirm("حذف هذا المنتج؟")) return
+  db.products = db.products.filter(p => p.id != id); save(); go("products")
+}
+
+// ---------- الزبائن ----------
+function customers(editId) {
+  const c = byId(db.customers, editId) || { name: "", phone: "" }
+  app.innerHTML = `<h2>👥 الزبائن</h2>
+    <div class="card"><b>${editId ? "✏️ تعديل زبون" : "＋ زبون جديد"}</b>
+      <label>الاسم</label><input id="cn" value="${esc(c.name)}">
+      <label>الهاتف (برمز الدولة، لإرسال الفاتورة على واتساب)</label>
+      <input id="cp" inputmode="tel" dir="ltr" placeholder="212612345678" value="${esc(c.phone)}">
+      <div class="err" id="err"></div>
+      <button class="wide" id="csave">${editId ? "حفظ التعديل" : "أضف الزبون"}</button>
+    </div>
+    <div class="card">${db.customers.length ? db.customers.map(x => {
+      const mine = db.orders.filter(o => o.customer == x.id && o.status != "ملغى")
+      return `<div class="row"><div><b>${esc(x.name)}</b><br>
+        <small dir="ltr">${esc(x.phone)}</small><br>
+        <small>${mine.length} طلبات · ${money(mine.reduce((s, o) => s + orderTotal(o), 0))}</small></div>
+        <div class="acts"><button class="soft" onclick="go('customers',${x.id})">✏️</button>
+        <button class="red" onclick="delCustomer(${x.id})">🗑</button></div></div>`
+    }).join("") : `<div class="empty">لا زبائن بعد</div>`}</div>`
+  document.getElementById("csave").onclick = () => {
+    const name = cn.value.trim(), phone = cp.value.trim()
+    if (!name) return err.textContent = "اكتب اسم الزبون"
+    if (editId) Object.assign(c, { name, phone })
+    else db.customers.push({ id: db.seq.c++, name, phone })
+    save(); go("customers")
+  }
+}
+function delCustomer(id) {
+  if (db.orders.some(o => o.customer == id)) return alert("لهذا الزبون طلبات، فلا يمكن حذفه")
+  if (!confirm("حذف هذا الزبون؟")) return
+  db.customers = db.customers.filter(c => c.id != id); save(); go("customers")
+}
+
+// ---------- الطلبات ----------
+function orders() {
+  const list = [...db.orders].reverse()
+  app.innerHTML = `<h2>🧾 الطلبات</h2>
+    <button class="gold wide" style="margin:0 0 12px" onclick="go('newOrder')">＋ طلب جديد</button>
+    <div class="card">${list.length ? list.map(o => {
+      const c = byId(db.customers, o.customer)
+      const cls = o.status == "مدفوع" ? "paid" : o.status == "ملغى" ? "cancel" : ""
+      return `<div class="row"><div><b>#${pad(o.id)}</b> <span class="tag ${cls}">${o.status}</span><br>
+        <small>${esc(c ? c.name : "زبون عابر")} · ${o.date}</small><br><b>${money(orderTotal(o))}</b></div>
+        <div class="acts">
+        ${o.status == "جديد" ? `<button class="soft" onclick="setStatus(${o.id},'مدفوع')">✔ مدفوع</button>` : ""}
+        <button class="soft" onclick="go('invoice',${o.id})">🧾</button>
+        ${o.status != "ملغى" ? `<button class="red" onclick="setStatus(${o.id},'ملغى')">✕</button>` : ""}
+        </div></div>`
+    }).join("") : `<div class="empty">لا طلبات بعد</div>`}</div>`
+}
+function setStatus(id, status) {
+  const o = byId(db.orders, id)
+  if (status == "ملغى") {
+    if (!confirm("إلغاء الطلب؟ ستعود الكميات إلى المخزون")) return
+    o.lines.forEach(l => { const p = byId(db.products, l.product); if (p) p.stock += l.qty })
+  }
+  o.status = status; save(); go("orders")
+}
+function newOrder() {
+  if (!db.products.length) {
+    app.innerHTML = `<h2>＋ طلب جديد</h2><div class="card empty">أضف منتجاتك أولاً
+      <button class="wide" onclick="go('products')">📦 إلى المنتجات</button></div>`
+    return
+  }
+  const lines = []
+  app.innerHTML = `<h2>＋ طلب جديد</h2>
+    <div class="card"><label>الزبون</label>
+      <select id="oc"><option value="">زبون عابر</option>
+      ${db.customers.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+      <div class="grid2">
+        <div><label>المنتج</label><select id="op">${db.products.map(p =>
+          `<option value="${p.id}">${esc(p.name)} (${p.stock})</option>`).join("")}</select></div>
+        <div><label>الكمية</label><input id="oq" inputmode="numeric" value="1"></div>
+      </div>
+      <button class="soft wide" id="oadd">＋ أضف إلى الطلب</button>
+      <div id="olines"></div>
+      <div class="err" id="err"></div>
+      <button class="gold wide" id="osave">✔ احفظ الطلب</button>
+    </div>`
+  const draw = () => {
+    olines.innerHTML = lines.map((l, i) => `<div class="row"><div>${l.qty} × ${esc(l.name)}</div>
+      <b>${money(l.qty * l.price)}</b><button class="red" onclick="this.closest('.row').remove();
+      window._rm(${i})">✕</button></div>`).join("") +
+      (lines.length ? `<div class="row"><b>المجموع</b><b>${money(lines.reduce((s, l) => s + l.qty * l.price, 0))}</b></div>` : "")
+  }
+  window._rm = i => { lines.splice(i, 1); draw() }
+  oadd.onclick = () => {
+    err.textContent = ""
+    const p = byId(db.products, op.value), qty = parseInt(oq.value)
+    if (!(qty > 0)) return err.textContent = "الكمية يجب أن تكون 1 أو أكثر"
+    const already = lines.filter(l => l.product == p.id).reduce((s, l) => s + l.qty, 0)
+    if (already + qty > p.stock) return err.textContent = `المخزون لا يكفي: باقي ${p.stock} فقط من ${p.name}`
+    lines.push({ product: p.id, name: p.name, price: p.price, qty }); draw()
+  }
+  osave.onclick = () => {
+    if (!lines.length) return err.textContent = "أضف منتجاً واحداً على الأقل"
+    lines.forEach(l => byId(db.products, l.product).stock -= l.qty)
+    db.orders.push({ id: db.seq.o++, customer: oc.value ? +oc.value : null,
+      date: today(), status: "جديد", lines })
+    save(); go("orders")
+  }
+}
+
+// ---------- الفاتورة ----------
+function invoice(id) {
+  const o = byId(db.orders, id), c = byId(db.customers, o.customer), s = db.settings
+  const text = [`🧾 فاتورة #${pad(o.id)} من ${s.name}`, "",
+    ...o.lines.map(l => `• ${l.qty} × ${l.name} = ${money(l.qty * l.price)}`), "",
+    "المجموع: " + money(orderTotal(o)), "شكراً لكم 🌷"].join("\n")
+  let phone = c && c.phone.replace(/\D/g, "").replace(/^00/, "")
+  if (phone && (phone.startsWith("0") || phone.length < 8)) phone = ""
+  app.innerHTML = `<div class="inv">
+      <h2>${esc(s.name)}</h2>
+      <small>${esc(s.address)} ${s.phone ? `· <span dir="ltr">${esc(s.phone)}</span>` : ""}</small>
+      <p><b>فاتورة رقم #${pad(o.id)}</b> · ${o.date}${o.status == "ملغى" ? " · <b>ملغاة</b>" : ""}<br>
+      الزبون: ${esc(c ? c.name : "زبون عابر")}</p>
+      <table><tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>المبلغ</th></tr>
+      ${o.lines.map(l => `<tr><td>${esc(l.name)}</td><td>${l.qty}</td><td>${money(l.price)}</td>
+        <td>${money(l.qty * l.price)}</td></tr>`).join("")}</table>
+      <div class="tot">المجموع: ${money(orderTotal(o))}</div>
+    </div>
+    <div class="noprint">
+      <button class="wide" onclick="print()">🖨 اطبع أو احفظ PDF</button>
+      ${phone ? `<button class="wide" style="background:#25D366" onclick="location.href='https://wa.me/${phone}?text='+encodeURIComponent(window._inv)">📲 أرسل الفاتورة للزبون على واتساب</button>` : ""}
+      <button class="soft wide" onclick="go('orders')">↩ رجوع</button>
+    </div>`
+  window._inv = text
+}
+
+// ---------- الإعدادات والنسخة الاحتياطية ----------
+function settings() {
+  const s = db.settings
+  app.innerHTML = `<h2>⚙️ الإعدادات</h2>
+    <div class="card">
+      <label>اسم المحل</label><input id="sn" value="${esc(s.name)}">
+      <label>الهاتف</label><input id="sp" dir="ltr" value="${esc(s.phone)}">
+      <label>العنوان</label><input id="sa" value="${esc(s.address)}">
+      <label>العملة</label><input id="sc" value="${esc(s.cur)}">
+      <button class="wide" id="ssave">حفظ</button>
+    </div>
+    <div class="card"><b>💾 نسخة احتياطية</b>
+      <p><small>بياناتك محفوظة داخل هذا المتصفح فقط. احفظ نسخة احتياطية بانتظام، وبها تنقل بياناتك إلى جهاز آخر.</small></p>
+      <button class="soft wide" id="exp">⬇ حمّل نسخة احتياطية</button>
+      <label class="soft" style="display:block;text-align:center;margin-top:10px;padding:10px;border-radius:10px;background:#f1ece2;cursor:pointer">
+        ⬆ استرجع نسخة احتياطية<input type="file" id="imp" accept=".json" hidden></label>
+      <div class="err" id="err"></div>
+      <button class="red wide" id="wipe">🗑 امسح كل البيانات</button>
+    </div>`
+  ssave.onclick = () => {
+    Object.assign(s, { name: sn.value.trim() || "محلّي", phone: sp.value.trim(),
+      address: sa.value.trim(), cur: sc.value.trim() || "درهم" })
+    save(); go("settings")
+  }
+  exp.onclick = () => {
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 1)], { type: "application/json" }))
+    a.download = `daftar-${today()}.json`; a.click()
+  }
+  imp.onchange = async () => {
+    try {
+      const data = JSON.parse(await imp.files[0].text())
+      if (!Array.isArray(data.products) || !Array.isArray(data.orders)) throw 0
+      db = data; save(); go("home")
+    } catch { err.textContent = "هذا الملف ليس نسخة احتياطية صحيحة" }
+  }
+  wipe.onclick = () => {
+    if (!confirm("مسح كل المنتجات والطلبات والزبائن؟ لا يمكن التراجع")) return
+    db = blank(); save(); go("home")
+  }
+}
+
+go("home")
+</script>
+</body>
+</html>
